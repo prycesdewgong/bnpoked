@@ -495,31 +495,61 @@
         function saveChartAsImage() {
             const svgEl = chartArea.querySelector('svg');
             if (!svgEl) return;
-            const serializer = new XMLSerializer();
-            const svgString = serializer.serializeToString(svgEl);
-            const width = svgEl.width.baseVal.value;
-            const height = svgEl.height.baseVal.value;
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            // Fill background with white to ensure a white backdrop in the exported image
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, width, height);
-            const img = new Image();
-            // Set crossOrigin to avoid tainting the canvas in some mobile browsers
-            img.crossOrigin = 'anonymous';
-            img.onload = function() {
-                ctx.drawImage(img, 0, 0);
-                const pngUrl = canvas.toDataURL('image/png');
-                const link = document.createElement('a');
-                link.href = pngUrl;
-                link.download = 'deck-chart.png';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-            };
-            img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgString)));
+            // Helper to preload all images used within the SVG before converting it to a PNG.
+            function preloadSvgImages() {
+                const images = svgEl.querySelectorAll('image');
+                const promises = [];
+                images.forEach(imgEl => {
+                    const href = imgEl.getAttribute('href') || imgEl.getAttribute('xlink:href');
+                    if (href) {
+                        const preload = new Image();
+                        preload.crossOrigin = 'anonymous';
+                        promises.push(new Promise(resolve => {
+                            // Resolve the promise regardless of load success or failure
+                            preload.onload = preload.onerror = resolve;
+                            preload.src = href;
+                        }));
+                    }
+                });
+                return Promise.all(promises);
+            }
+            preloadSvgImages().then(() => {
+                // Clone the SVG and ensure it has the proper XML namespace. Without
+                // a namespace, some browsers may drop images during serialization.
+                const clonedSvg = svgEl.cloneNode(true);
+                clonedSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+                const serializer = new XMLSerializer();
+                const svgString = serializer.serializeToString(clonedSvg);
+                const width = svgEl.width.baseVal.value;
+                const height = svgEl.height.baseVal.value;
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                // Fill background with white to ensure a white backdrop in the exported image
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, width, height);
+                // Create a Blob from the serialized SVG and convert it to an Object URL. Using
+                // a Blob instead of a data URI improves reliability, particularly on first
+                // export, and avoids issues with long base64 strings. The URL will be revoked
+                // once the image has loaded.
+                const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+                const url = URL.createObjectURL(svgBlob);
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = function() {
+                    ctx.drawImage(img, 0, 0);
+                    URL.revokeObjectURL(url);
+                    const pngUrl = canvas.toDataURL('image/png');
+                    const link = document.createElement('a');
+                    link.href = pngUrl;
+                    link.download = 'deck-chart.png';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                };
+                img.src = url;
+            });
         }
         addDeckButton.addEventListener('click', addDeck);
         createChartButton.addEventListener('click', createDonutChart);
