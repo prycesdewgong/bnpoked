@@ -268,12 +268,9 @@
             chartArea.innerHTML = '';
             const data = decks.slice().sort((a, b) => b.count - a.count);
             const total = data.reduce((sum, d) => sum + d.count, 0);
-            // Make chart responsive: set width based on available container or viewport size.
-            const containerWidth = chartArea.clientWidth || window.innerWidth;
-            // Use a maximum width of 800px; otherwise use 90% of the container width minus padding.
-            const width = Math.min(800, containerWidth - 20);
-            // Maintain a 4:3 aspect ratio for the chart height.
-            const height = width * 0.75;
+            // Use fixed chart size for PC and mobile to ensure readability when exporting from smartphones.
+            const width = 800;
+            const height = 600;
             const radius = Math.min(width, height) / 2 - 40;
             const svg = d3.select(chartArea)
                 .append('svg')
