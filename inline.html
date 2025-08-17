@@ -335,6 +335,35 @@
                             .attr('x', deck.imgOffsetX - radius * deck.imageScale)
                             .attr('y', deck.imgOffsetY - radius * deck.imageScale);
                     });
+                // Touch-based pinch-to-zoom support for mobile devices
+                img.on('touchstart', function(event) {
+                    if (event.touches && event.touches.length === 2) {
+                        const dx = event.touches[0].clientX - event.touches[1].clientX;
+                        const dy = event.touches[0].clientY - event.touches[1].clientY;
+                        deck.touchInitialDist = Math.sqrt(dx * dx + dy * dy);
+                        deck.touchInitialScale = deck.imageScale;
+                    }
+                });
+                img.on('touchmove', function(event) {
+                    if (event.touches && event.touches.length === 2 && deck.touchInitialDist) {
+                        event.preventDefault();
+                        const dx = event.touches[0].clientX - event.touches[1].clientX;
+                        const dy = event.touches[0].clientY - event.touches[1].clientY;
+                        const newDist = Math.sqrt(dx * dx + dy * dy);
+                        const ratio = newDist / deck.touchInitialDist;
+                        deck.imageScale = Math.min(Math.max(deck.touchInitialScale * ratio, 0.2), 3);
+                        d3.select(this)
+                            .attr('width', radius * 2 * deck.imageScale)
+                            .attr('height', radius * 2 * deck.imageScale)
+                            .attr('x', deck.imgOffsetX - radius * deck.imageScale)
+                            .attr('y', deck.imgOffsetY - radius * deck.imageScale);
+                    }
+                });
+                img.on('touchend', function() {
+                    // Reset touch initial state when gesture ends
+                    deck.touchInitialDist = null;
+                    deck.touchInitialScale = null;
+                });
                 const centroid = arcGen.centroid(arcDatum);
                 // Position labels just outside the donut ring
                 const labelRadius = radius + 20;
@@ -364,7 +393,8 @@
                     .style('fill', '#000000')
                     .style('stroke', '#ffffff')
                     .style('stroke-width', '3px')
-                    .style('paint-order', 'stroke fill');
+                    .style('paint-order', 'stroke fill')
+                    .style('font-family', 'sans-serif');
                 // Deck name on the first line
                 labelText.append('tspan')
                     .text(deck.name)
@@ -424,7 +454,8 @@
                 .style('fill', '#000000')
                 .style('stroke', '#ffffff')
                 .style('stroke-width', '3px')
-                .style('paint-order', 'stroke fill');
+                .style('paint-order', 'stroke fill')
+                .style('font-family', 'sans-serif');
             if (titleLines.length > 1) {
                 titleGroup.append('tspan')
                     .text(titleLines[0])
@@ -460,6 +491,8 @@
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, width, height);
             const img = new Image();
+            // Set crossOrigin to avoid tainting the canvas in some mobile browsers
+            img.crossOrigin = 'anonymous';
             img.onload = function() {
                 ctx.drawImage(img, 0, 0);
                 const pngUrl = canvas.toDataURL('image/png');
