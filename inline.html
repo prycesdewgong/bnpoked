@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8" />
+    <!-- Ensure proper mobile scaling -->
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Deck Chart Maker</title>
+    <style>
+        /* Theme variables for flat design */
+        :root {
+            --primary-color: #4a90e2;
+            --secondary-color: #6cc060;
+            --background-color: #f9fafa;
+            --card-background: #ffffff;
+            --border-color: #e0e0e0;
+            --text-color: #333333;
+        }
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            box-sizing: border-box;
+        }
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 1.5rem;
+            text-align: center;
+            color: var(--primary-color);
+        }
+        .input-area {
+            margin-bottom: 1rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            align-items: flex-end;
+            background: var(--card-background);
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+        label {
+            display: flex;
+            flex-direction: column;
+            font-weight: 600;
+            color: #555555;
+            margin-right: 10px;
+            flex: 1 1 200px;
+            min-width: 150px;
+        }
+        input[type="text"],
+        input[type="number"],
+        input[type="file"] {
+            padding: 10px;
+            font-size: 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            width: 100%;
+            background: #ffffff;
+            box-sizing: border-box;
+        }
+        input[type="number"] {
+            /* ensure numeric input takes full width like text input */
+            -moz-appearance: textfield;
+        }
+        input[type="number"]::-webkit-outer-spin-button,
+        input[type="number"]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        button {
+            padding: 12px;
+            font-size: 1rem;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            flex: 1 1 auto;
+            transition: background-color 0.2s ease;
+        }
+        #addDeckButton {
+            background-color: var(--primary-color);
+            color: #ffffff;
+        }
+        #addDeckButton:hover {
+            background-color: #3b79c8;
+        }
+        #createChartButton {
+            background-color: var(--secondary-color);
+            color: #ffffff;
+        }
+        #createChartButton:hover {
+            background-color: #57a54e;
+        }
+        #saveImageButton {
+            background-color: #757575;
+            color: #ffffff;
+        }
+        #saveImageButton:hover {
+            background-color: #616161;
+        }
+        #deckList {
+            margin-top: 10px;
+            margin-bottom: 10px;
+        }
+        #deckList .deck-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 6px;
+            background-color: var(--card-background);
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+        }
+        #deckList .deck-item img {
+            width: 40px;
+            height: 40px;
+            object-fit: cover;
+            margin-right: 10px;
+            border-radius: 4px;
+        }
+        #chartArea {
+            margin-top: 20px;
+            overflow-x: auto;
+        }
+
+        /* Responsive adjustments for smaller screens */
+        @media (max-width: 600px) {
+            .input-area {
+                flex-direction: column;
+            }
+            label {
+                flex: 1 1 auto;
+                width: 100%;
+                margin-right: 0;
+            }
+            button {
+                width: 100%;
+            }
+            #createChartButton,
+            #saveImageButton {
+                margin-top: 0.5rem;
+            }
+            #deckList .deck-item {
+                font-size: 0.9rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Deck Chart Maker</h1>
+    <div class="input-area">
+        <label>
+            デッキ名称:
+            <input type="text" id="deckName" placeholder="デッキ名称" />
+        </label>
+        <label>
+            使用者数:
+            <input type="number" id="deckCount" placeholder="0" min="1" />
+        </label>
+        <label>
+            画像:
+            <input type="file" id="deckImage" accept="image/*" />
+        </label>
+        <button id="addDeckButton">画像を追加</button>
+    </div>
+    <div id="deckList"></div>
+    <div style="margin-top: 1rem;">
+        <label>
+            グラフ中央に表示するタイトル:
+        <input type="text" id="chartTitle" placeholder="大会名など（空欄でもOK）" />
+        </label>
+    </div>
+    <div style="margin-top: 1rem;">
+        <button id="createChartButton">円グラフ作成</button>
+        <!-- Save button will appear after chart is generated -->
+        <button id="saveImageButton">画像として保存</button>
+    </div>
+    <div id="totalCount" style="margin-top: 1rem; font-weight: bold;"></div>
+    <div id="chartArea"></div>
+    <!-- Load d3.js from CDN -->
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <script>
+    (function () {
+        const decks = [];
+        const deckNameInput = document.getElementById('deckName');
+        const deckCountInput = document.getElementById('deckCount');
+        const deckImageInput = document.getElementById('deckImage');
+        const addDeckButton = document.getElementById('addDeckButton');
+        const deckListContainer = document.getElementById('deckList');
+        const createChartButton = document.getElementById('createChartButton');
+        const chartTitleInput = document.getElementById('chartTitle');
+        const chartArea = document.getElementById('chartArea');
+        const totalCountEl = document.getElementById('totalCount');
+
+        function renderDeckList() {
+            deckListContainer.innerHTML = '';
+            if (!decks.length) {
+                totalCountEl.textContent = '';
+                return;
+            }
+            let total = 0;
+            decks.forEach((deck) => {
+                total += deck.count;
+            });
+            decks.forEach((deck) => {
+                const item = document.createElement('div');
+                item.className = 'deck-item';
+                const img = document.createElement('img');
+                img.src = deck.image;
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = `${deck.name} (${deck.count})`;
+                item.appendChild(img);
+                item.appendChild(nameSpan);
+                deckListContainer.appendChild(item);
+            });
+            totalCountEl.textContent = `合計人数: ${total}`;
+        }
+
+        function addDeck() {
+            const name = deckNameInput.value.trim();
+            const countVal = parseInt(deckCountInput.value, 10);
+            const imgFile = deckImageInput.files[0];
+            if (!name) {
+                alert('デッキ名称を入力してください');
+                return;
+            }
+            if (!countVal || countVal < 1) {
+                alert('使用者数には1以上の数字を入力してください');
+                return;
+            }
+            if (!imgFile) {
+                alert('画像を選択してください');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                decks.push({
+                    name: name,
+                    count: countVal,
+                    image: e.target.result,
+                    // Track the current x/y offset of the embedded image so the
+                    // user can drag it around. These values are updated on drag.
+                    imgOffsetX: 0,
+                    imgOffsetY: 0,
+                    // Track the current offset for the deck label, updated when
+                    // the user drags the label. This allows persistent positions
+                    // across re-renders.
+                    textOffsetX: 0,
+                    textOffsetY: 0,
+                    // Default scale for the image. Users can zoom via the mouse
+                    // wheel; this property persists between chart renders.
+                    imageScale: 1,
+                });
+                deckNameInput.value = '';
+                deckCountInput.value = '';
+                deckImageInput.value = '';
+                renderDeckList();
+            };
+            reader.readAsDataURL(imgFile);
+        }
+
+        function createDonutChart() {
+            if (!decks.length) {
+                alert('デッキ情報がありません。先にデッキを追加してください。');
+                return;
+            }
+            chartArea.innerHTML = '';
+            const data = decks.slice().sort((a, b) => b.count - a.count);
+            const total = data.reduce((sum, d) => sum + d.count, 0);
+            // Make chart responsive: set width based on available container or viewport size.
+            const containerWidth = chartArea.clientWidth || window.innerWidth;
+            // Use a maximum width of 800px; otherwise use 90% of the container width minus padding.
+            const width = Math.min(800, containerWidth - 20);
+            // Maintain a 4:3 aspect ratio for the chart height.
+            const height = width * 0.75;
+            const radius = Math.min(width, height) / 2 - 40;
+            const svg = d3.select(chartArea)
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height);
+            const g = svg.append('g')
+                .attr('transform', `translate(${width / 2}, ${height / 2})`);
+            // Make the donut segments thicker by reducing the inner radius.
+            // A smaller inner radius yields a wider ring and a smaller central hole.
+            const innerRadius = radius * 0.35;
+            const arcGen = d3.arc()
+                .innerRadius(innerRadius)
+                .outerRadius(radius);
+            const pieGen = d3.pie()
+                .sort(null)
+                .value(d => d.count);
+            const arcs = pieGen(data);
+            const defs = svg.append('defs');
+            arcs.forEach((arcDatum, i) => {
+                const deck = data[i];
+                // Ensure scale property exists
+                if (deck.imageScale === undefined) deck.imageScale = 1;
+                const clipId = `clip-${i}`;
+                defs.append('clipPath')
+                    .attr('id', clipId)
+                    .append('path')
+                    .attr('d', arcGen(arcDatum));
+                g.append('path')
+                    .attr('d', arcGen(arcDatum))
+                    .attr('fill', 'none')
+                    .attr('stroke', '#ffffff')
+                    .attr('stroke-width', 2);
+                const segGroup = g.append('g')
+                    .attr('clip-path', `url(#${clipId})`);
+                const img = segGroup.append('image')
+                    .attr('href', deck.image)
+                    .attr('width', radius * 2 * deck.imageScale)
+                    .attr('height', radius * 2 * deck.imageScale)
+                    // Position image so scaling is centered
+                    .attr('x', deck.imgOffsetX - radius * deck.imageScale)
+                    .attr('y', deck.imgOffsetY - radius * deck.imageScale)
+                    .style('cursor', 'move')
+                    .call(
+                        d3.drag().on('drag', function (event) {
+                            deck.imgOffsetX += event.dx;
+                            deck.imgOffsetY += event.dy;
+                            d3.select(this)
+                                .attr('x', deck.imgOffsetX - radius * deck.imageScale)
+                                .attr('y', deck.imgOffsetY - radius * deck.imageScale);
+                        })
+                    )
+                    .on('wheel', function(event) {
+                        event.preventDefault();
+                        const delta = event.deltaY > 0 ? -0.05 : 0.05;
+                        deck.imageScale = Math.min(Math.max(deck.imageScale + delta, 0.2), 3);
+                        d3.select(this)
+                            .attr('width', radius * 2 * deck.imageScale)
+                            .attr('height', radius * 2 * deck.imageScale)
+                            .attr('x', deck.imgOffsetX - radius * deck.imageScale)
+                            .attr('y', deck.imgOffsetY - radius * deck.imageScale);
+                    });
+                const centroid = arcGen.centroid(arcDatum);
+                // Position labels just outside the donut ring
+                const labelRadius = radius + 20;
+                const hyp = Math.sqrt(centroid[0] * centroid[0] + centroid[1] * centroid[1]) || 1;
+                const baseX = (centroid[0] / hyp) * labelRadius;
+                const baseY = (centroid[1] / hyp) * labelRadius;
+                // Create a separate group for each label so dragging moves both name and percentage together.
+                const labelGroup = g.append('g')
+                    .style('cursor', 'move')
+                    .style('pointer-events', 'all')
+                    .attr('transform', `translate(${baseX + (deck.textOffsetX || 0)}, ${baseY + (deck.textOffsetY || 0)})`)
+                    .call(
+                        d3.drag().on('drag', function (event) {
+                            deck.textOffsetX += event.dx;
+                            deck.textOffsetY += event.dy;
+                            d3.select(this).attr('transform', `translate(${baseX + deck.textOffsetX}, ${baseY + deck.textOffsetY})`);
+                        })
+                    );
+                // Calculate percentage string and split integer and decimal parts
+                const percValue = ((deck.count / total) * 100).toFixed(1);
+                const [intPart, decPartRaw] = percValue.split('.');
+                const decPart = decPartRaw || '0';
+                // Create text element with white outline for better legibility
+                const labelText = labelGroup.append('text')
+                    .attr('text-anchor', 'middle')
+                    .attr('alignment-baseline', 'middle')
+                    .style('fill', '#000000')
+                    .style('stroke', '#ffffff')
+                    .style('stroke-width', '3px')
+                    .style('paint-order', 'stroke fill');
+                // Deck name on the first line
+                labelText.append('tspan')
+                    .text(deck.name)
+                    .style('font-size', '16px')
+                    .style('font-weight', 'bold')
+                    .attr('x', 0)
+                    .attr('dy', 0);
+                // Percentage: integer part large on second line
+                labelText.append('tspan')
+                    .text(intPart)
+                    .style('font-size', '26px')
+                    .style('font-weight', 'bold')
+                    .attr('x', 0)
+                    .attr('dy', '1.2em');
+                // Decimal part and % symbol smaller, offset upwards slightly
+                labelText.append('tspan')
+                    .text('.' + decPart + '%')
+                    .style('font-size', '14px')
+                    .style('font-weight', 'bold')
+                    .attr('dy', '-0.3em');
+            });
+            g.append('circle')
+                .attr('r', innerRadius)
+                .attr('fill', '#ffffff');
+            const title = chartTitleInput.value.trim();
+            // Function to split the title into two lines: first line can contain
+            // up to 8 full-width characters or 12 half-width (ASCII) characters.
+            function splitTitleByWidth(str) {
+                let fullCount = 0;
+                let halfCount = 0;
+                let breakIndex = -1;
+                for (let i = 0; i < str.length; i++) {
+                    const code = str.charCodeAt(i);
+                    // ASCII and half-width kana fall below 0xFF
+                    if (code <= 0xff) {
+                        halfCount++;
+                    } else {
+                        fullCount++;
+                    }
+                    if (fullCount >= 8 || halfCount >= 12) {
+                        breakIndex = i + 1;
+                        break;
+                    }
+                }
+                if (breakIndex > 0 && breakIndex < str.length) {
+                    return [str.slice(0, breakIndex), str.slice(breakIndex)];
+                }
+                return [str];
+            }
+            const titleLines = splitTitleByWidth(title);
+            const titleGroup = g.append('text')
+                .attr('text-anchor', 'middle')
+                .attr('alignment-baseline', 'middle')
+                .style('font-size', '20px')
+                .style('font-weight', 'bold')
+                // Apply white outline for improved visibility similar to deck labels
+                .style('fill', '#000000')
+                .style('stroke', '#ffffff')
+                .style('stroke-width', '3px')
+                .style('paint-order', 'stroke fill');
+            if (titleLines.length > 1) {
+                titleGroup.append('tspan')
+                    .text(titleLines[0])
+                    .attr('x', 0)
+                    .attr('dy', '-0.3em');
+                titleGroup.append('tspan')
+                    .text(titleLines[1])
+                    .attr('x', 0)
+                    .attr('dy', '1.2em');
+            } else {
+                titleGroup.append('tspan')
+                    .text(titleLines[0])
+                    .attr('x', 0)
+                    .attr('dy', 0);
+            }
+        }
+        /**
+         * Convert the current SVG chart into a PNG and trigger a download.
+         * This allows users to save the donut chart, labels and title as a single image.
+         */
+        function saveChartAsImage() {
+            const svgEl = chartArea.querySelector('svg');
+            if (!svgEl) return;
+            const serializer = new XMLSerializer();
+            const svgString = serializer.serializeToString(svgEl);
+            const width = svgEl.width.baseVal.value;
+            const height = svgEl.height.baseVal.value;
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            // Fill background with white to ensure a white backdrop in the exported image
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, width, height);
+            const img = new Image();
+            img.onload = function() {
+                ctx.drawImage(img, 0, 0);
+                const pngUrl = canvas.toDataURL('image/png');
+                const link = document.createElement('a');
+                link.href = pngUrl;
+                link.download = 'deck-chart.png';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+            img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgString)));
+        }
+        addDeckButton.addEventListener('click', addDeck);
+        createChartButton.addEventListener('click', createDonutChart);
+        if (saveImageButton) {
+            saveImageButton.addEventListener('click', saveChartAsImage);
+        }
+    })();
+    </script>
+</body>
+</html>
