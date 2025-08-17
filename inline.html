@@ -335,34 +335,53 @@
                             .attr('x', deck.imgOffsetX - radius * deck.imageScale)
                             .attr('y', deck.imgOffsetY - radius * deck.imageScale);
                     });
-                // Touch-based pinch-to-zoom support for mobile devices
-                img.on('touchstart', function(event) {
-                    if (event.touches && event.touches.length === 2) {
-                        const dx = event.touches[0].clientX - event.touches[1].clientX;
-                        const dy = event.touches[0].clientY - event.touches[1].clientY;
-                        deck.touchInitialDist = Math.sqrt(dx * dx + dy * dy);
-                        deck.touchInitialScale = deck.imageScale;
+                // Disable default touch actions on the image so custom gestures work
+                img.style('touch-action', 'none');
+                // Pointer events for pinch-to-zoom on mobile and touch devices
+                img.on('pointerdown', function(event) {
+                    // Capture pointer to continue receiving events
+                    this.setPointerCapture(event.pointerId);
+                    if (!this._pointers) this._pointers = new Map();
+                    this._pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+                    // When two pointers are active, store initial distance and scale
+                    if (this._pointers.size === 2) {
+                        const pts = Array.from(this._pointers.values());
+                        const dx = pts[0].x - pts[1].x;
+                        const dy = pts[0].y - pts[1].y;
+                        this._initialDist = Math.sqrt(dx * dx + dy * dy);
+                        this._initialScale = deck.imageScale;
                     }
-                });
-                img.on('touchmove', function(event) {
-                    if (event.touches && event.touches.length === 2 && deck.touchInitialDist) {
-                        event.preventDefault();
-                        const dx = event.touches[0].clientX - event.touches[1].clientX;
-                        const dy = event.touches[0].clientY - event.touches[1].clientY;
-                        const newDist = Math.sqrt(dx * dx + dy * dy);
-                        const ratio = newDist / deck.touchInitialDist;
-                        deck.imageScale = Math.min(Math.max(deck.touchInitialScale * ratio, 0.2), 3);
-                        d3.select(this)
-                            .attr('width', radius * 2 * deck.imageScale)
-                            .attr('height', radius * 2 * deck.imageScale)
-                            .attr('x', deck.imgOffsetX - radius * deck.imageScale)
-                            .attr('y', deck.imgOffsetY - radius * deck.imageScale);
+                })
+                .on('pointermove', function(event) {
+                    if (!this._pointers) return;
+                    if (this._pointers.has(event.pointerId)) {
+                        this._pointers.get(event.pointerId).x = event.clientX;
+                        this._pointers.get(event.pointerId).y = event.clientY;
+                        if (this._pointers.size === 2 && this._initialDist) {
+                            event.preventDefault();
+                            const pts = Array.from(this._pointers.values());
+                            const dx = pts[0].x - pts[1].x;
+                            const dy = pts[0].y - pts[1].y;
+                            const newDist = Math.sqrt(dx * dx + dy * dy);
+                            const ratio = newDist / this._initialDist;
+                            deck.imageScale = Math.min(Math.max(this._initialScale * ratio, 0.2), 3);
+                            d3.select(this)
+                                .attr('width', radius * 2 * deck.imageScale)
+                                .attr('height', radius * 2 * deck.imageScale)
+                                .attr('x', deck.imgOffsetX - radius * deck.imageScale)
+                                .attr('y', deck.imgOffsetY - radius * deck.imageScale);
+                        }
                     }
-                });
-                img.on('touchend', function() {
-                    // Reset touch initial state when gesture ends
-                    deck.touchInitialDist = null;
-                    deck.touchInitialScale = null;
+                })
+                .on('pointerup pointercancel', function(event) {
+                    if (this._pointers && this._pointers.has(event.pointerId)) {
+                        this._pointers.delete(event.pointerId);
+                    }
+                    if (this._pointers && this._pointers.size < 2) {
+                        // Reset pinch state when less than two pointers remain
+                        this._initialDist = null;
+                        this._initialScale = null;
+                    }
                 });
                 const centroid = arcGen.centroid(arcDatum);
                 // Position labels just outside the donut ring
